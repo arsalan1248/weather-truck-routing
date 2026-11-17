@@ -2,8 +2,8 @@
 
 A React + Django app that helps a truck driver pick the safest route. It compares three routes using the weather forecast **at the time the truck will reach each point**, the load weight and the travel time.
 
-- **Live app:** _added after deployment_
-- **API:** _added after deployment_
+- **Live app:** https://weather-truck-routing-lac.vercel.app
+- **API:** https://weather-truck-routing-api-pi.vercel.app/api/health/
 
 ## What it does
 
