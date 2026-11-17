@@ -1,11 +1,11 @@
-import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 
 from django.conf import settings
-from django.core.cache import cache
 
 from .geo import interpolate, thin_out
+from .heatmap import build_heatmap
 from .recommendation import RouteSummary, explain_choice, rank_routes
 from .risk import Risk, assess_weather
 from .routing import fetch_route_options
@@ -44,11 +44,17 @@ def place_checkpoints(route, interval_miles, departure):
 def plan_trip(origin, destination, departure, load_lb, interval_miles):
     routes = fetch_route_options(origin['point'], destination['point'], count=settings.ROUTE_OPTIONS)
     checkpoints_per_route = [place_checkpoints(route, interval_miles, departure) for route in routes]
-
-    # One batched weather request covers every checkpoint on every route.
     all_checkpoints = [cp for checkpoints in checkpoints_per_route for cp in checkpoints]
     latest_eta = max(cp.eta for cp in all_checkpoints)
-    forecasts = iter(fetch_forecasts([cp.point for cp in all_checkpoints], departure, latest_eta))
+    route_samples = [thin_out(route.points, route.miles, every_miles=5) for route in routes]
+
+    # The checkpoint forecasts (one batched request) and the heatmap forecasts
+    # don't depend on each other, so they're fetched at the same time.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        checkpoint_job = pool.submit(fetch_forecasts, [cp.point for cp in all_checkpoints], departure, latest_eta)
+        heatmap_job = pool.submit(build_heatmap, route_samples, departure, load_lb)
+        forecasts = iter(checkpoint_job.result())
+        heatmap = heatmap_job.result()
 
     route_results = {}
     summaries = []
@@ -63,15 +69,7 @@ def plan_trip(origin, destination, departure, load_lb, interval_miles):
         route_results[summary.route_id]['rank'] = position
         route_results[summary.route_id]['is_recommended'] = position == 1
 
-    trip_id = uuid.uuid4().hex
-    cache.set(f'trip:{trip_id}', {
-        'departure': departure,
-        'load_lb': load_lb,
-        'route_samples': [thin_out(route.points, route.miles, every_miles=5) for route in routes],
-    }, settings.TRIP_CACHE_SECONDS)
-
     return {
-        'trip_id': trip_id,
         'origin': origin['name'],
         'destination': destination['name'],
         'departure_time': departure,
@@ -80,6 +78,7 @@ def plan_trip(origin, destination, departure, load_lb, interval_miles):
         'recommended_route_id': ranked[0].route_id,
         'recommendation_reason': explain_choice(ranked),
         'routes': sorted(route_results.values(), key=lambda r: r['rank']),
+        'heatmap': heatmap,
     }
 
 

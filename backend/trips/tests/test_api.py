@@ -2,7 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
 from trips.services.routing import RouteOption, RoutingError
@@ -35,11 +35,12 @@ def stormy_on_route_a(points, start, end):
     ]
 
 
-@override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
-@patch('trips.services.planner.fetch_route_options', return_value=[ROUTE_A, ROUTE_B])
 class TripApiTests(TestCase):
     def setUp(self):
         cache.clear()
+        self.routes = self.start_patch('trips.services.planner.fetch_route_options', return_value=[ROUTE_A, ROUTE_B])
+        self.forecasts = self.start_patch('trips.services.planner.fetch_forecasts', side_effect=calm_forecasts)
+        self.start_patch('trips.services.heatmap.fetch_forecasts', side_effect=calm_forecasts)
         self.payload = {
             'origin': {'name': 'Southtown', 'lat': 30.0, 'lon': -97.0},
             'destination': {'name': 'Northtown', 'lat': 31.45, 'lon': -97.0},
@@ -48,11 +49,15 @@ class TripApiTests(TestCase):
             'checkpoint_interval_miles': 25,
         }
 
+    def start_patch(self, target, **kwargs):
+        patcher = patch(target, **kwargs)
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
     def post(self):
         return self.client.post('/api/trips/', self.payload, content_type='application/json')
 
-    @patch('trips.services.planner.fetch_forecasts', side_effect=calm_forecasts)
-    def test_calm_weather_recommends_the_fastest_route(self, _forecasts, _routes):
+    def test_calm_weather_recommends_the_fastest_route(self):
         response = self.post()
 
         self.assertEqual(response.status_code, 201)
@@ -61,8 +66,9 @@ class TripApiTests(TestCase):
         self.assertEqual(len(data['routes']), 2)
         self.assertEqual(len(data['routes'][0]['checkpoints']), 5)  # miles 0, 25, 50, 75, 100
 
-    @patch('trips.services.planner.fetch_forecasts', side_effect=stormy_on_route_a)
-    def test_avoids_the_route_with_dangerous_wind(self, _forecasts, _routes):
+    def test_avoids_the_route_with_dangerous_wind(self):
+        self.forecasts.side_effect = stormy_on_route_a
+
         data = self.post().json()
 
         self.assertEqual(data['recommended_route_id'], 'B')
@@ -71,7 +77,13 @@ class TripApiTests(TestCase):
         self.assertEqual(route_a['summary']['worst_risk'], 'No Travel')
         self.assertEqual(route_a['checkpoints'][0]['risk'], 'No Travel')
 
-    def test_rejects_an_unsupported_interval(self, _routes):
+    def test_includes_a_heatmap_score_per_point_per_hour(self):
+        heatmap = self.post().json()['heatmap']
+
+        self.assertEqual(len(heatmap['scores']), 49)
+        self.assertTrue(all(len(hour) == len(heatmap['points']) for hour in heatmap['scores']))
+
+    def test_rejects_an_unsupported_interval(self):
         self.payload['checkpoint_interval_miles'] = 30
 
         response = self.post()
@@ -79,7 +91,7 @@ class TripApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('checkpoint_interval_miles', response.json())
 
-    def test_rejects_a_departure_in_the_past(self, _routes):
+    def test_rejects_a_departure_in_the_past(self):
         self.payload['departure_time'] = (timezone.now() - timedelta(days=1)).isoformat()
 
         response = self.post()
@@ -87,22 +99,7 @@ class TripApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('departure_time', response.json())
 
-    def test_routing_failure_is_a_502(self, mock_routes):
-        mock_routes.side_effect = RoutingError('The routing service is unavailable, please try again shortly.')
+    def test_routing_failure_is_a_502(self):
+        self.routes.side_effect = RoutingError('The routing service is unavailable, please try again shortly.')
 
         self.assertEqual(self.post().status_code, 502)
-
-    @patch('trips.services.heatmap.fetch_forecasts', side_effect=calm_forecasts)
-    @patch('trips.services.planner.fetch_forecasts', side_effect=calm_forecasts)
-    def test_heatmap_has_a_score_per_point_per_hour(self, _planner_forecasts, _heatmap_forecasts, _routes):
-        trip_id = self.post().json()['trip_id']
-
-        response = self.client.get(f'/api/trips/{trip_id}/heatmap/')
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(len(data['scores']), 49)
-        self.assertTrue(all(len(hour) == len(data['points']) for hour in data['scores']))
-
-    def test_unknown_trip_heatmap_is_a_404(self, _routes):
-        self.assertEqual(self.client.get('/api/trips/nope/heatmap/').status_code, 404)

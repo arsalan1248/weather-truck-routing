@@ -43,17 +43,17 @@ def corridor_points(route_samples, width_miles=CORRIDOR_WIDTH_MILES, max_points=
         spacing *= 1.25
 
 
-def build_heatmap(trip):
+def build_heatmap(route_samples, departure, load_lb):
     """Risk scores for every grid point, for every hour from departure to HEATMAP_HOURS later."""
-    points, spacing_miles = corridor_points(trip['route_samples'])
-    start = hour_floor(trip['departure'])
+    points, spacing_miles = corridor_points(route_samples)
+    start = hour_floor(departure)
     hours = settings.HEATMAP_HOURS
     forecasts = fetch_forecasts(points, start, start + timedelta(hours=hours))
 
     scores = []
     for hour in range(hours + 1):
         moment = start + timedelta(hours=hour)
-        scores.append([round(risk_score(*forecast.at(moment), trip['load_lb']), 2) for forecast in forecasts])
+        scores.append([round(risk_score(*forecast.at(moment), load_lb), 2) for forecast in forecasts])
 
     return {
         'start_time': start,

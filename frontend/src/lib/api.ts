@@ -1,4 +1,4 @@
-import type { Heatmap, Place, Trip, TripRequest } from './types'
+import type { Place, Trip, TripRequest } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -8,10 +8,6 @@ export async function planTrip(request: TripRequest): Promise<Trip> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })
-}
-
-export async function fetchHeatmap(tripId: string): Promise<Heatmap> {
-  return send<Heatmap>(`${API_URL}/api/trips/${tripId}/heatmap/`)
 }
 
 export async function pingServer(): Promise<void> {

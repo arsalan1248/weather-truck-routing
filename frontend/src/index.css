@@ -353,10 +353,6 @@ button.primary:disabled {
   font-size: 0.9rem;
 }
 
-.forecast-panel.error {
-  color: var(--danger);
-}
-
 .forecast-header {
   display: flex;
   justify-content: space-between;

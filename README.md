@@ -49,15 +49,15 @@ Each checkpoint stands for the miles halfway to its neighbours, which gives ever
 
 ### Heatmap
 
-The heatmap covers a 60-mile corridor around all three routes on a regular grid of up to 250 points, with the spacing chosen to fit. It loads in a second request, so the routes appear without waiting for it. All 49 hours (0 to 48 after departure) arrive in one response of about 70 KB.
+The heatmap covers a 60-mile corridor around all three routes on a regular grid of up to 250 points, with the spacing chosen to fit. Its forecasts are fetched at the same time as the checkpoint forecasts, so it adds little to the response time. All 49 hours (0 to 48 after departure) come back with the routes in the same response, and add about 70 KB.
 
 Each grid point stores all 49 hourly scores as properties (`s0` … `s48`). Moving the slider only changes which property the map's style reads, so no data is re-sent and nothing is rebuilt. That's what keeps the slider and the play button smooth.
 
 The score is a smooth 0–4 version of the risk level, so the colours blend between grid points. Its whole-number part always matches the checkpoint risk level, e.g. 2.6 is High. It's drawn as blurred circles rather than MapLibre's built-in heatmap layer, because that layer sums up overlapping points (density), while here each point is a value.
 
-### Caching
+### No server state
 
-Plans and forecasts are cached in SQLite (Django's database cache), so every server worker sees the same data. The heatmap request looks the trip up by its ID, and repeated forecasts are served from the cache for 30 minutes.
+Each request does all its own work and returns everything the page needs, so nothing has to be stored between requests. That's what lets the backend run as a serverless function. Forecasts are cached in memory for 30 minutes, which helps when the same instance gets a repeat request, but nothing depends on that cache.
 
 ## Assumptions
 
@@ -80,7 +80,6 @@ cd backend
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python manage.py createcachetable
 python manage.py runserver
 ```
 
@@ -117,21 +116,25 @@ The backend tests check every boundary in the risk table, the load rules at exac
 }
 ```
 
-The response has `trip_id`, `recommended_route_id`, `recommendation_reason`, and `routes`. Each route has its geometry, summary and checkpoints, and each checkpoint has its ETA, weather, risk and reasons.
+The response has `recommended_route_id`, `recommendation_reason`, `routes` and `heatmap`:
 
-`GET /api/trips/<trip_id>/heatmap/` returns `points`, `spacing_miles`, `start_time` and `scores[hour][point]` for hours 0–48.
+- Each route has its geometry, summary and checkpoints, and each checkpoint has its ETA, weather, risk and reasons.
+- `heatmap` has `points`, `spacing_miles`, `start_time` and `scores[hour][point]` for hours 0–48.
 
-`GET /api/health/` is used by the frontend to wake the server on free hosting.
+`GET /api/health/` is called by the frontend on page load, so a cold server is already starting before the first trip is planned.
 
 ## Deployment
 
-- **Backend:** Render free web service, defined in `render.yaml`. Free services sleep after 15 minutes idle, so the first request can take up to a minute. The frontend pings the server on load and shows a notice while it wakes.
-- **Frontend:** Vercel, with the root directory set to `frontend` and `VITE_API_URL` set to the Render URL.
+Both parts run on Vercel's free plan, as two projects from this repo:
+
+- **Backend:** root directory `backend`. `api/index.py` hands requests to Django and `vercel.json` routes every path to it. Environment variables: `DJANGO_DEBUG=false`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS=.vercel.app`, and `CORS_ALLOWED_ORIGINS` set to the frontend's URL.
+- **Frontend:** root directory `frontend`, with `VITE_API_URL` set to the backend's URL.
 
 ## Project layout
 
 ```
 backend/
+  api/index.py            Vercel entry point
   config/                 settings and URLs
   trips/
     services/
@@ -155,4 +158,4 @@ frontend/
 - Show wind gusts alongside sustained wind, and let the user choose which one drives the risk.
 - Use a truck-specific routing profile (height, weight and hazmat restrictions) instead of capping car times.
 - Suggest the safest departure time within the 48-hour window.
-- Move the cache to Redis if the app runs on more than one server.
+- Share the forecast cache between server instances (e.g. Redis), so repeat trips are faster.

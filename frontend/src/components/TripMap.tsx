@@ -15,25 +15,25 @@ interface Props {
   trip: Trip | null
   selectedRouteId: string | null
   onSelectRoute: (routeId: string) => void
-  heatmap: Heatmap | null
   hour: number
   showHeatmap: boolean
   truckPosition: [number, number] | null
 }
 
 interface OpenPopup {
-  tripId: string
+  trip: Trip
   route: RouteOption
   checkpoint: Checkpoint
 }
 
-export function TripMap({ trip, selectedRouteId, onSelectRoute, heatmap, hour, showHeatmap, truckPosition }: Props) {
+export function TripMap({ trip, selectedRouteId, onSelectRoute, hour, showHeatmap, truckPosition }: Props) {
   const mapRef = useRef<MapRef>(null)
   const [popup, setPopup] = useState<OpenPopup | null>(null)
   const [hovering, setHovering] = useState(false)
+  const heatmap = trip?.heatmap ?? null
 
   // A popup from a previous trip is simply not shown.
-  const visiblePopup = popup && popup.tripId === trip?.trip_id ? popup : null
+  const visiblePopup = popup && popup.trip === trip ? popup : null
 
   useEffect(() => {
     if (!trip) return
@@ -64,7 +64,7 @@ export function TripMap({ trip, selectedRouteId, onSelectRoute, heatmap, hour, s
     const route = trip.routes.find((r) => r.id === feature.properties.routeId)
     if (!route) return
     if (feature.layer.id === 'checkpoints') {
-      setPopup({ tripId: trip.trip_id, route, checkpoint: route.checkpoints[feature.properties.index] })
+      setPopup({ trip, route, checkpoint: route.checkpoints[feature.properties.index] })
     } else {
       onSelectRoute(route.id)
     }

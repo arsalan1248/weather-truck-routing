@@ -49,7 +49,6 @@ export interface RouteOption {
 }
 
 export interface Trip {
-  trip_id: string
   origin: string
   destination: string
   departure_time: string
@@ -58,6 +57,7 @@ export interface Trip {
   recommended_route_id: string
   recommendation_reason: string
   routes: RouteOption[]
+  heatmap: Heatmap
 }
 
 export interface Heatmap {

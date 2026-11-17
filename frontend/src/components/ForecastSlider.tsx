@@ -5,18 +5,16 @@ import type { Heatmap } from '../lib/types'
 const PLAY_STEP_MS = 600
 
 interface Props {
-  heatmap: Heatmap | null
-  loading: boolean
-  error: string | null
+  heatmap: Heatmap
   hour: number
   onHourChange: (hour: number) => void
   showHeatmap: boolean
   onToggleHeatmap: (show: boolean) => void
 }
 
-export function ForecastSlider({ heatmap, loading, error, hour, onHourChange, showHeatmap, onToggleHeatmap }: Props) {
+export function ForecastSlider({ heatmap, hour, onHourChange, showHeatmap, onToggleHeatmap }: Props) {
   const [playing, setPlaying] = useState(false)
-  const maxHour = heatmap?.hours ?? 48
+  const maxHour = heatmap.hours
 
   useEffect(() => {
     if (!playing) return
@@ -25,10 +23,6 @@ export function ForecastSlider({ heatmap, loading, error, hour, onHourChange, sh
     }, PLAY_STEP_MS)
     return () => window.clearInterval(timer)
   }, [playing, hour, maxHour, onHourChange])
-
-  if (loading) return <div className="forecast-panel muted">Loading the 48-hour weather forecast…</div>
-  if (error) return <div className="forecast-panel error">{error}</div>
-  if (!heatmap) return null
 
   const time = new Date(Date.parse(heatmap.start_time) + hour * 3_600_000)
 

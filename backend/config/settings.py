@@ -50,11 +50,11 @@ DATABASES = {
     }
 }
 
-# Kept in SQLite so every server worker sees the same cached trips and forecasts.
+# Only forecasts are cached, so an in-memory cache per server instance is enough.
+# Nothing has to be shared between requests.
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
-        'LOCATION': 'cache',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
 }
 
@@ -88,5 +88,4 @@ CHECKPOINT_INTERVALS_MILES = [10, 25, 50]
 HEATMAP_HOURS = 48
 MAX_DAYS_AHEAD = 7
 
-TRIP_CACHE_SECONDS = 60 * 60
 FORECAST_CACHE_SECONDS = 30 * 60

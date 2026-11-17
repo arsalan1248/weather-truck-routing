@@ -4,9 +4,9 @@ import { Legend } from './components/Legend'
 import { RouteCard } from './components/RouteCard'
 import { TripForm } from './components/TripForm'
 import { TripMap } from './components/TripMap'
-import { fetchHeatmap, pingServer, planTrip } from './lib/api'
+import { pingServer, planTrip } from './lib/api'
 import { truckPositionAt } from './lib/truck'
-import type { Heatmap, Trip, TripRequest } from './lib/types'
+import type { Trip, TripRequest } from './lib/types'
 
 export default function App() {
   const serverWaking = useServerWakeUp()
@@ -14,24 +14,17 @@ export default function App() {
   const [planning, setPlanning] = useState(false)
   const [planError, setPlanError] = useState<string | null>(null)
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
-
-  const [heatmap, setHeatmap] = useState<Heatmap | null>(null)
-  const [heatmapLoading, setHeatmapLoading] = useState(false)
-  const [heatmapError, setHeatmapError] = useState<string | null>(null)
   const [showHeatmap, setShowHeatmap] = useState(true)
   const [hour, setHour] = useState(0)
 
   async function handlePlan(request: TripRequest) {
     setPlanning(true)
     setPlanError(null)
-    setHeatmap(null)
-    setHeatmapError(null)
     try {
       const newTrip = await planTrip(request)
       setTrip(newTrip)
       setSelectedRouteId(newTrip.recommended_route_id)
       setHour(0)
-      loadHeatmap(newTrip.trip_id)
     } catch (error) {
       setPlanError((error as Error).message)
     } finally {
@@ -39,25 +32,13 @@ export default function App() {
     }
   }
 
-  // Loaded after the routes so they appear without waiting for the bigger forecast grid.
-  async function loadHeatmap(tripId: string) {
-    setHeatmapLoading(true)
-    try {
-      setHeatmap(await fetchHeatmap(tripId))
-    } catch (error) {
-      setHeatmapError((error as Error).message)
-    } finally {
-      setHeatmapLoading(false)
-    }
-  }
-
   const handleHourChange = useCallback((value: number) => setHour(value), [])
 
   const selectedRoute = trip?.routes.find((route) => route.id === selectedRouteId) ?? null
   const truckPosition = useMemo(() => {
-    if (!selectedRoute || !heatmap) return null
-    return truckPositionAt(selectedRoute, new Date(Date.parse(heatmap.start_time) + hour * 3_600_000))
-  }, [selectedRoute, heatmap, hour])
+    if (!trip || !selectedRoute) return null
+    return truckPositionAt(selectedRoute, new Date(Date.parse(trip.heatmap.start_time) + hour * 3_600_000))
+  }, [trip, selectedRoute, hour])
 
   return (
     <div className="app">
@@ -67,9 +48,7 @@ export default function App() {
           <p className="muted">Compare routes by the weather the truck will actually drive through.</p>
         </header>
 
-        {serverWaking && (
-          <p className="notice">Waking up the server. On free hosting this can take up to a minute the first time.</p>
-        )}
+        {serverWaking && <p className="notice">Connecting to the server…</p>}
 
         <TripForm busy={planning} onSubmit={handlePlan} />
         {planError && <p className="form-error">{planError}</p>}
@@ -96,7 +75,6 @@ export default function App() {
           trip={trip}
           selectedRouteId={selectedRouteId}
           onSelectRoute={setSelectedRouteId}
-          heatmap={heatmap}
           hour={hour}
           showHeatmap={showHeatmap}
           truckPosition={truckPosition}
@@ -104,9 +82,7 @@ export default function App() {
         <Legend />
         {trip && (
           <ForecastSlider
-            heatmap={heatmap}
-            loading={heatmapLoading}
-            error={heatmapError}
+            heatmap={trip.heatmap}
             hour={hour}
             onHourChange={handleHourChange}
             showHeatmap={showHeatmap}
@@ -118,7 +94,7 @@ export default function App() {
   )
 }
 
-/** True while the backend is slow to answer its first request, i.e. a free server waking from sleep. */
+/** True while the backend is slow to answer its first request, e.g. a serverless function starting cold. */
 function useServerWakeUp() {
   const [waking, setWaking] = useState(false)
 
