@@ -38,7 +38,7 @@ class ExplainChoiceTests(SimpleTestCase):
 
     def test_explains_travel_time_when_risk_is_equal(self):
         reason = self.explain(summary('A', hours=11), summary('B', hours=9))
-        self.assertIn('fastest', reason)
+        self.assertEqual(reason, 'Same weather risk as Route A, and 120 min faster.')
 
     def test_warns_when_every_route_has_no_travel(self):
         reason = self.explain(summary('A', no_travel=5), summary('B', no_travel=10))

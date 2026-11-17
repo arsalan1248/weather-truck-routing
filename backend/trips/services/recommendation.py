@@ -50,4 +50,5 @@ def explain_choice(ranked):
         return f'Same Severe miles, but fewest High miles: {best.high_miles:.0f} vs {runner_up.high_miles:.0f} on {name}.'
     if round(best.average_risk, 2) < round(runner_up.average_risk, 2):
         return f'Lowest average risk: {best.average_risk:.2f} vs {runner_up.average_risk:.2f} on {name}.'
-    return 'Weather risk is about the same on every route, so the fastest one wins.'
+    minutes_faster = round((runner_up.duration_seconds - best.duration_seconds) / 60)
+    return f'Same weather risk as {name}, and {minutes_faster} min faster.'
